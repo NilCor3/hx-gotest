@@ -7,6 +7,12 @@ import (
 	"strings"
 )
 
+// knownNameFields are struct field names commonly used as table-driven test names.
+var knownNameFields = map[string]bool{
+	"name": true, "testName": true, "desc": true, "description": true,
+	"scenario": true, "test": true, "caseName": true, "label": true,
+}
+
 // FindTestPattern returns the go test -run pattern for the given file/line/mode.
 // mode is one of: cursor, func, file.
 // Returns ("", false) if the cursor is not inside a test function (for cursor/func modes).
@@ -39,11 +45,17 @@ func FindTestPattern(filename string, line int, mode string) (string, bool) {
 			return "^" + fn.Name.Name + "$", true
 		}
 
-		// cursor mode: find deepest subtest at this line
+		// cursor mode: find deepest t.Run subtest at this line
 		subPath := findSubtest(fset, fn.Body, line)
 		if subPath != "" {
 			return "^" + fn.Name.Name + "$/" + subPath, true
 		}
+
+		// Fallback: table-driven test — find struct member named like a test name
+		if hint := tableTestNameOnLine(fset, f, line); hint != "" {
+			return "^" + fn.Name.Name + "$/" + "^" + hint + "$", true
+		}
+
 		return "^" + fn.Name.Name + "$", true
 	}
 
@@ -121,4 +133,74 @@ func filePattern(fset *token.FileSet, f *ast.File) string {
 		return ""
 	}
 	return "^(" + strings.Join(names, "|") + ")$"
+}
+
+// tableTestNameOnLine finds a struct composite literal element on the given line
+// and returns the value of its name-like field (keyed or first string).
+// Spaces are replaced with "_" to match Go's t.Run sanitization.
+func tableTestNameOnLine(fset *token.FileSet, f *ast.File, line int) string {
+	var result string
+
+	ast.Inspect(f, func(n ast.Node) bool {
+		if result != "" {
+			return false
+		}
+		outer, ok := n.(*ast.CompositeLit)
+		if !ok {
+			return true
+		}
+
+		for _, elt := range outer.Elts {
+			eltStart := fset.Position(elt.Pos()).Line
+			eltEnd := fset.Position(elt.End()).Line
+			if line < eltStart || line > eltEnd {
+				continue
+			}
+
+			// Element is a struct composite literal (the row)
+			row, ok := elt.(*ast.CompositeLit)
+			if !ok {
+				// Could be a single-value element — check for string literal
+				if bl, ok := elt.(*ast.BasicLit); ok && bl.Kind == token.STRING {
+					result = testNameFromLit(bl)
+				}
+				return false
+			}
+
+			// First pass: look for keyed name field
+			for _, field := range row.Elts {
+				kv, ok := field.(*ast.KeyValueExpr)
+				if !ok {
+					continue
+				}
+				key, ok := kv.Key.(*ast.Ident)
+				if !ok || !knownNameFields[key.Name] {
+					continue
+				}
+				if bl, ok := kv.Value.(*ast.BasicLit); ok && bl.Kind == token.STRING {
+					result = testNameFromLit(bl)
+					return false
+				}
+			}
+
+			// Second pass: use first string BasicLit in unkeyed struct
+			for _, field := range row.Elts {
+				if bl, ok := field.(*ast.BasicLit); ok && bl.Kind == token.STRING {
+					result = testNameFromLit(bl)
+					return false
+				}
+			}
+
+			return false
+		}
+		return true
+	})
+
+	return result
+}
+
+// testNameFromLit strips quotes and replaces spaces with _ (Go's t.Run sanitization).
+func testNameFromLit(bl *ast.BasicLit) string {
+	v := strings.Trim(bl.Value, "`\"")
+	return strings.ReplaceAll(v, " ", "_")
 }

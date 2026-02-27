@@ -37,6 +37,36 @@ func TestVarSubtest(t *testing.T) {
 		t.Log("var")
 	})
 }
+
+func TestTableUnkeyed(t *testing.T) {
+	cases := []struct {
+		name string
+		val  int
+	}{
+		{"first case", 1},
+		{"second case", 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_ = tc.val
+		})
+	}
+}
+
+func TestTableKeyed(t *testing.T) {
+	cases := []struct {
+		desc string
+		val  int
+	}{
+		{desc: "keyed first", val: 1},
+		{desc: "keyed second", val: 2},
+	}
+	for _, tc := range cases {
+		t.Run(tc.desc, func(t *testing.T) {
+			_ = tc.val
+		})
+	}
+}
 `
 
 func writeTemp(t *testing.T, content string) string {
@@ -70,12 +100,16 @@ func TestFindTestPattern(t *testing.T) {
 		{"cursor: variable subtest", 30, "cursor", `^TestVarSubtest$/.*`, true},
 		{"cursor: outside any test", 1, "cursor", ``, false},
 
-		// func mode
+		// table-driven tests
+		{"table: unkeyed first row", 38, "cursor", `^TestTableUnkeyed$/^first_case$`, true},
+		{"table: unkeyed second row", 39, "cursor", `^TestTableUnkeyed$/^second_case$`, true},
+		{"table: keyed first row", 53, "cursor", `^TestTableKeyed$/^keyed_first$`, true},
+		{"table: keyed second row", 54, "cursor", `^TestTableKeyed$/^keyed_second$`, true},
 		{"func: ignores subtests", 11, "func", `^TestWithSub$`, true},
 		{"func: simple", 6, "func", `^TestSimple$`, true},
 
 		// file mode
-		{"file: all tests", 1, "file", `^(TestSimple|TestWithSub|TestNested|TestVarSubtest)$`, true},
+		{"file: all tests", 1, "file", `^(TestSimple|TestWithSub|TestNested|TestVarSubtest|TestTableUnkeyed|TestTableKeyed)$`, true},
 	}
 
 	for _, tc := range cases {
