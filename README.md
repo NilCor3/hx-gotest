@@ -31,8 +31,30 @@ Output streams into a bottom WezTerm pane.
 ## Build & install
 
 ```sh
+cd ~/source/hx-gotest
 go build -o ~/.local/bin/hx-gotest .
 ```
+
+Requires `~/.local/bin` on `$PATH` (added to `~/.zshrc`).
+
+## Development
+
+```sh
+# Run all tests
+go test -v ./...
+
+# Run a specific test
+go test -v -run TestFindTestPattern/table:_unkeyed_first_row
+
+# Rebuild after changes
+go build -o ~/.local/bin/hx-gotest .
+```
+
+The core logic is in `finder.go`. Add new test cases to `finder_test.go` in the
+`testFile` constant (embedded Go source) and the `cases` table in `TestFindTestPattern`.
+
+Note: line numbers in test cases refer to lines within the embedded `testFile` string,
+not lines in `finder_test.go` itself (`testFile` starts at line 1 of the parsed temp file).
 
 ## Edge cases
 
