@@ -94,8 +94,8 @@ func findSubtest(fset *token.FileSet, node ast.Node, line int) string {
 		// Get subtest name
 		var name string
 		if lit, ok := call.Args[0].(*ast.BasicLit); ok {
-			// String literal: strip quotes
-			name = "^" + strings.Trim(lit.Value, `"`) + "$"
+			// String literal: sanitize same as testNameFromLit
+			name = "^" + testNameFromLit(lit) + "$"
 		} else {
 			// Variable or expression: use wildcard
 			name = ".*"
@@ -199,8 +199,22 @@ func tableTestNameOnLine(fset *token.FileSet, f *ast.File, line int) string {
 	return result
 }
 
-// testNameFromLit strips quotes and replaces spaces with _ (Go's t.Run sanitization).
+// testNameFromLit strips quotes, replaces spaces with _ (Go's t.Run sanitization),
+// and replaces any character that is unsafe in a shell-embedded regex (e.g. single
+// quotes, backticks, dollar signs) with . (single-char regex wildcard).
+// This keeps the pattern shell-safe while still matching the sanitized test name.
 func testNameFromLit(bl *ast.BasicLit) string {
 	v := strings.Trim(bl.Value, "`\"")
-	return strings.ReplaceAll(v, " ", "_")
+	v = strings.ReplaceAll(v, " ", "_")
+	var sb strings.Builder
+	for _, r := range v {
+		safe := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') || r == '_' || r == '-'
+		if safe {
+			sb.WriteRune(r)
+		} else {
+			sb.WriteRune('.')
+		}
+	}
+	return sb.String()
 }
